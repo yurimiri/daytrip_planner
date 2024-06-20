@@ -20,9 +20,10 @@ def fetch_travel_plan(destination, style):
     목적지 : {destination}
     여행 스타일 : {style}
     이 입력값에 맞는 당일치기 여행 계획을 짜줘.
-    내용에 반드시 포함 : 장소(맛집이나 명소), 이동 동선, 간단한 설명.
-    마지막에 각 장소이름과 경도 위도를 출력해줘
-    1. 장소 경도 위도 이런 식으로 
+    반드시 포함해야 하는 내용 : 장소, 이동 동선, 간단한 설명. 
+    장소를 알려줄 때 실제 존재하는 곳을 명확하게 알려줘.
+    마지막에 각 장소이름과 경도 위도를 출력해줘.
+    1. 장소 : 경도, 위도 
     """
     response = model.generate_content(query)
     return response
@@ -54,12 +55,13 @@ def generate_plan():
     if travel_plan and hasattr(travel_plan, 'candidates'):
         content_part = travel_plan.candidates[0].content.parts[0]
         st.session_state.travel_plan = content_part.text
-
+        
         # 장소 정보 추출
         st.session_state.places = extract_places(content_part.text)
 
 # Streamlit 앱
-st.title("당일 치기 여행 플래너")
+st.set_page_config(layout="wide")
+st.title("당일치기 여행 일정 추천")
 
 # 초기 상태 설정
 if 'travel_plan' not in st.session_state:
@@ -67,38 +69,82 @@ if 'travel_plan' not in st.session_state:
 if 'places' not in st.session_state:
     st.session_state.places = []
 
-# 레이아웃 설정
+# 레이아웃 및 스타일 설정
 st.markdown(
     """
     <style>
-    .reportview-container .main .block-container{
-        padding-top: 2rem;
-        padding-right: 1rem;
-        padding-left: 1rem;
-        padding-bottom: 2rem;
+    body {
+        font-family: 'Helvetica Neue', sans-serif;
+        background-color: #f0f8ff;
+        color: #333;
+    }
+    .main-title {
+        font-size: 48px;
+        color: #008080;
+        text-align: center;
+        margin-top: 20px;
+        font-weight: bold;
+    }
+    .sidebar-content, .content, .map-container {
+        padding: 20px;
+        border-radius: 10px;
+        margin-bottom: 20px;
+    }
+    .stButton button {
+        background-color: #008080;
+        color: white;
+        border-radius: 10px;
+        padding: 10px 20px;
+        border: none;
+    }
+    .stButton button:hover {
+        background-color: #006666;
+    }
+    .stTextInput input {
+        padding: 10px;
+        border-radius: 10px;
+        border: 1px solid #ccc;
+        width: 100%;
+        box-sizing: border-box;
+    }
+    .stTextArea textarea {
+        padding: 10px;
+        border-radius: 10px;
+        border: 1px solid #ccc;
+        width: 100%;
+        box-sizing: border-box;
+        height: 150px; 
+        resize: none;
     }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-col1, col2, col3 = st.columns([1, 2, 2])
+col1, col2, col3 = st.columns([2, 4, 4])
 
 with col1:
+    st.markdown('<div class="sidebar-content">', unsafe_allow_html=True)
     st.header("입력창")
-    destination = st.text_input("여행지 입력", "서울")
-    style = st.text_input("여행 스타일 입력", "활동적인 동선")
+    destination = st.text_input("여행지 입력", "대구 근처 바다")
+    style = st.text_area("여행 스타일 입력", "바다 구경도 하고 회도 먹고 싶은데 날이 더우니까 실내 위주로 놀고 싶어.")
     if st.button("여행 계획 생성"):
+        st.session_state.travel_plan = None
+        st.session_state.places = []
         generate_plan()
+    st.markdown('</div>', unsafe_allow_html=True)
 
 with col2:
+    st.markdown('<div class="content">', unsafe_allow_html=True)
     st.header("계획")
     if st.session_state.travel_plan:
         st.write(st.session_state.travel_plan)
     else:
         st.write("여행 계획이 생성되지 않았습니다. 입력 후 '여행 계획 생성' 버튼을 눌러주세요.")
+    st.markdown('</div>', unsafe_allow_html=True)
 
 with col3:
+    st.markdown('<div class="map-container">', unsafe_allow_html=True)
     st.header("지도")
     if st.session_state.places:
         m = folium.Map(location=[st.session_state.places[0]['latitude'], st.session_state.places[0]['longitude']], zoom_start=13)
@@ -107,7 +153,7 @@ with col3:
                 [place['latitude'], place['longitude']],
                 popup=f"{place['name']}"
             ).add_to(m)
-
         st_folium(m, width=700, height=500)
     else:
         st.write("여행 계획이 생성되지 않았습니다.")
+    st.markdown('</div>', unsafe_allow_html=True)
