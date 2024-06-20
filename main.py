@@ -47,19 +47,6 @@ def extract_places(content):
 
     return places
 
-# Streamlit 앱
-st.title("당일 치기 여행 플래너")
-
-# 초기 상태 설정
-if 'travel_plan' not in st.session_state:
-    st.session_state.travel_plan = None
-if 'places' not in st.session_state:
-    st.session_state.places = []
-
-# 입력 받기
-destination = st.text_input("여행지 입력", "서울")
-style = st.text_input("여행 스타일 입력", "활동적인 동선")
-
 # 여행 계획 생성 함수
 def generate_plan():
     travel_plan = fetch_travel_plan(destination, style)
@@ -71,24 +58,56 @@ def generate_plan():
         # 장소 정보 추출
         st.session_state.places = extract_places(content_part.text)
 
-# 여행 계획 생성 버튼
-st.button("여행 계획 생성", on_click=generate_plan)
+# Streamlit 앱
+st.title("당일 치기 여행 플래너")
 
-# 여행 계획 출력
-if st.session_state.travel_plan:
-    st.subheader("여행 계획")
-    st.write(st.session_state.travel_plan)
-    
-    # 지도 표시
+# 초기 상태 설정
+if 'travel_plan' not in st.session_state:
+    st.session_state.travel_plan = None
+if 'places' not in st.session_state:
+    st.session_state.places = []
+
+# 레이아웃 설정
+st.markdown(
+    """
+    <style>
+    .reportview-container .main .block-container{
+        padding-top: 2rem;
+        padding-right: 1rem;
+        padding-left: 1rem;
+        padding-bottom: 2rem;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+col1, col2, col3 = st.columns([1, 2, 2])
+
+with col1:
+    st.header("입력창")
+    destination = st.text_input("여행지 입력", "서울")
+    style = st.text_input("여행 스타일 입력", "활동적인 동선")
+    if st.button("여행 계획 생성"):
+        generate_plan()
+
+with col2:
+    st.header("계획")
+    if st.session_state.travel_plan:
+        st.write(st.session_state.travel_plan)
+    else:
+        st.write("여행 계획이 생성되지 않았습니다. 입력 후 '여행 계획 생성' 버튼을 눌러주세요.")
+
+with col3:
+    st.header("지도")
     if st.session_state.places:
         m = folium.Map(location=[st.session_state.places[0]['latitude'], st.session_state.places[0]['longitude']], zoom_start=13)
         for place in st.session_state.places:
             folium.Marker(
-                [place['latitude'], place['longitude']], 
+                [place['latitude'], place['longitude']],
                 popup=f"{place['name']}"
             ).add_to(m)
-        
-        # 지도 객체를 Streamlit에 표시
-        st_data = st_folium(m, width=700, height=500)
-else:
-    st.write("여행 계획이 생성되지 않았습니다. 입력 후 '여행 계획 생성' 버튼을 눌러주세요.")
+
+        st_folium(m, width=700, height=500)
+    else:
+        st.write("여행 계획이 생성되지 않았습니다.")
