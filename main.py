@@ -1,17 +1,17 @@
-from dotenv import load_dotenv
-import os
 import streamlit as st
+import google.generativeai as genai
 import folium
 from streamlit_folium import st_folium
-import google.generativeai as genai
+from dotenv import load_dotenv
+import os
 import re
 
-# load .env
+# .env 파일 로드
 load_dotenv()
 
-# API 키 설정
-API_KEY = os.environ.get('API_KEY')
-genai.configure(api_key=API_KEY)
+# 환경 변수에서 API 키 가져오기
+api_key = os.environ.get('API_KEY')
+genai.configure(api_key=api_key)
 
 # Google Gemini API 호출 함수
 def fetch_travel_plan(destination, style):
@@ -19,14 +19,50 @@ def fetch_travel_plan(destination, style):
     query = f"""
     목적지 : {destination}
     여행 스타일 : {style}
-    이 입력값에 맞는 당일치기 여행 계획을 짜줘.
-    반드시 포함해야 하는 내용 : 장소, 이동 동선, 간단한 설명. 
-    장소를 알려줄 때 실제 존재하는 곳을 명확하게 알려줘.
-    마지막에 각 장소이름과 경도 위도를 출력해줘.
-    1. 장소 : 경도, 위도 
+    이 입력값에 맞는 당일치기 여행 계획을 짜주세요.
+    장소 추천은 정확한 위치와 이름을 포함해주세요.
+    
+    여행 계획을 다음 형식에 맞춰 작성해 주세요:
+    
+    시원한 바다 당일치기 여행
+
+    🌞 아침 (10:00) : 집에서 출발 - 🌊 영덕 해맞이 공원 (실내 전망대)
+    * 대구에서 영덕까지는 차로 약 1시간 30분 소요됩니다.
+    * 영덕 해맞이 공원은 탁 트인 동해 바다를 한눈에 조망할 수 있는 곳입니다.
+    * 특히, 해맞이 전망대는 엘리베이터를 이용하여 편리하게 오를 수 있으며, 시원한 바닷바람과 함께 멋진 파노라마를 감상할 수 있습니다.
+    * 더운 날씨에도 실내에서 시원하게 바다를 즐길 수 있는 최고의 장소입니다.
+    
+    🐠 점심 (12:00) : 영덕 강구항 - 🐟 영덕 대게 직판장
+    * 영덕 해맞이 공원에서 차로 약 10분 거리에 위치한 강구항은 영덕 대게의 주산지입니다.
+    * 영덕 대게 직판장에서 신선한 대게를 저렴하게 구매하여 맛볼 수 있습니다.
+    * 싱싱한 해산물을 맛보며 푸짐한 점심 식사를 즐겨보세요.
+    
+    🍦 후식 (14:00) : 영덕 해맞이 공원 - ☕ 카페 '오션뷰'
+    * 점심 식사 후 다시 영덕 해맞이 공원으로 돌아와 '오션뷰' 카페에서 시원한 커피와 디저트를 즐기세요.
+    * 바다를 바라보며 여유로운 시간을 보내고,
+    * 탁 트인 동해 바다를 배경으로 인생샷을 남겨보세요.
+    
+    🚗 저녁 (17:00) : 집으로 출발
+    * 아름다운 영덕 바다를 만끽하고 대구로 출발합니다.
+    * 대구까지는 약 1시간 30분 소요됩니다.
+
+    장소 정보
+    1. 영덕 해맞이 공원 : 129.2222, 36.2993
+    2. 영덕 대게 직판장 : 129.2463, 36.3081
+    3. 카페 '오션뷰' : 129.2239, 36.3007
     """
     response = model.generate_content(query)
     return response
+
+# 응답에서 텍스트 추출 및 디코딩 함수
+def extract_text(response):
+    if response and hasattr(response, 'candidates'):
+        content_part = response.candidates[0].content.parts[0]
+        text = content_part.text
+        return text
+    else:
+        st.error("API 응답이 올바르지 않습니다.")
+        return None
 
 # 장소 정보를 추출하는 함수
 def extract_places(content):
@@ -36,28 +72,47 @@ def extract_places(content):
     matches = pattern.findall(content)
     
     for match in matches:
-        name = match[0].strip()
-        longitude = float(match[1].strip())
-        latitude = float(match[2].strip())
-        place = {
-            "name": name,
-            "latitude": latitude,
-            "longitude": longitude
-        }
-        places.append(place)
-
+            name = match[0].strip()
+            longitude = float(match[1].strip())
+            latitude = float(match[2].strip())
+            place = {
+                "name": name,
+                "latitude": latitude,
+                "longitude": longitude
+            }
+            places.append(place)
+    
     return places
 
 # 여행 계획 생성 함수
-def generate_plan():
-    travel_plan = fetch_travel_plan(destination, style)
-    
-    if travel_plan and hasattr(travel_plan, 'candidates'):
-        content_part = travel_plan.candidates[0].content.parts[0]
-        st.session_state.travel_plan = content_part.text
+def generate_plan(destination, style):
+    plan_response = fetch_travel_plan(destination, style)
+    if plan_response:
+        plan_text = extract_text(plan_response)
+        st.session_state.travel_plan = plan_text
+        st.session_state.places = extract_places(plan_text)
+    else:
+        st.session_state.travel_plan = "여행 계획을 가져오지 못했습니다."
+        st.session_state.places = []
+
+# 지도 그리기 함수
+def draw_map(places):
+    if places:
+        # 첫 번째 장소의 위치를 중심으로 지도 생성
+        m = folium.Map(location=[places[0]['latitude'], places[0]['longitude']], zoom_start=13)
         
-        # 장소 정보 추출
-        st.session_state.places = extract_places(content_part.text)
+        # 각 장소에 마커 추가
+        for place in places:
+            folium.Marker(
+                [place['latitude'], place['longitude']],
+                popup=f"{place['name']}"
+            ).add_to(m)
+        
+        return m
+    else:
+        print("추출된 장소가 없습니다.")
+        return None
+
 
 # Streamlit 앱
 st.set_page_config(layout="wide")
@@ -126,12 +181,10 @@ col1, col2, col3 = st.columns([2, 4, 4])
 with col1:
     st.markdown('<div class="sidebar-content">', unsafe_allow_html=True)
     st.header("입력창")
-    destination = st.text_input("여행지 입력", "대구 근처 바다")
+    destination = st.text_input("여행지 입력", "대구에서 가까운 바다")
     style = st.text_area("여행 스타일 입력", "바다 구경도 하고 회도 먹고 싶은데 날이 더우니까 실내 위주로 놀고 싶어.")
     if st.button("여행 계획 생성"):
-        st.session_state.travel_plan = None
-        st.session_state.places = []
-        generate_plan()
+        generate_plan(destination, style)
     st.markdown('</div>', unsafe_allow_html=True)
 
 with col2:
@@ -147,13 +200,9 @@ with col3:
     st.markdown('<div class="map-container">', unsafe_allow_html=True)
     st.header("지도")
     if st.session_state.places:
-        m = folium.Map(location=[st.session_state.places[0]['latitude'], st.session_state.places[0]['longitude']], zoom_start=13)
-        for place in st.session_state.places:
-            folium.Marker(
-                [place['latitude'], place['longitude']],
-                popup=f"{place['name']}"
-            ).add_to(m)
-        st_folium(m, width=700, height=500)
+        map_ = draw_map(st.session_state.places)
+        if map_:
+            st_folium(map_, width=700, height=500)
     else:
         st.write("여행 계획이 생성되지 않았습니다.")
     st.markdown('</div>', unsafe_allow_html=True)
